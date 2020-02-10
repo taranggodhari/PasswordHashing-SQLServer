@@ -1,0 +1,12 @@
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\Passhash.exe.config
+D:\Projects\Demos\Passhash\Passhash\obj\Debug\Passhash.csprojResolveAssemblyReference.cache
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\Passhash.exe
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\Passhash.pdb
+D:\Projects\Demos\Passhash\Passhash\obj\Debug\Passhash.exe
+D:\Projects\Demos\Passhash\Passhash\obj\Debug\Passhash.pdb
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\Newtonsoft.Json.dll
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\Newtonsoft.Json.xml
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\Microsoft.Configuration.ConfigurationBuilders.Base.dll
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\Microsoft.Configuration.ConfigurationBuilders.UserSecrets.dll
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\Microsoft.Configuration.ConfigurationBuilders.UserSecrets.xml
+D:\Projects\Demos\Passhash\Passhash\bin\Debug\connections.config
