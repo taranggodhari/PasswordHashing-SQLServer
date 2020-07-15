@@ -10,3 +10,15 @@ D:\Projects\Demos\Passhash\Passhash\bin\Debug\Microsoft.Configuration.Configurat
 D:\Projects\Demos\Passhash\Passhash\bin\Debug\Microsoft.Configuration.ConfigurationBuilders.UserSecrets.dll
 D:\Projects\Demos\Passhash\Passhash\bin\Debug\Microsoft.Configuration.ConfigurationBuilders.UserSecrets.xml
 D:\Projects\Demos\Passhash\Passhash\bin\Debug\connections.config
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\Passhash.exe.config
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\obj\Debug\Passhash.exe
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\obj\Debug\Passhash.pdb
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\connections.config
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\Passhash.exe
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\Passhash.pdb
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\Microsoft.Configuration.ConfigurationBuilders.Base.dll
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\Microsoft.Configuration.ConfigurationBuilders.UserSecrets.dll
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\Newtonsoft.Json.dll
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\Microsoft.Configuration.ConfigurationBuilders.UserSecrets.xml
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\bin\Debug\Newtonsoft.Json.xml
+D:\Projects\PasswordHashing\PasswordHashing-SQLServer\Passhash\obj\Debug\Passhash.csprojResolveAssemblyReference.cache

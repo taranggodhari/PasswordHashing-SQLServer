@@ -21,7 +21,7 @@ namespace Passhash
             }
             catch (Exception e)
             {
-                Console.WriteLine("Cannot open Redirect.txt for writing");
+                Console.WriteLine("Cannot open passwordVerification_3.txt for writing");
                 Console.WriteLine(e.Message);
                 return;
             }
