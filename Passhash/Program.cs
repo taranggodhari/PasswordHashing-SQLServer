@@ -47,7 +47,7 @@ namespace Passhash
             UpsertDatatable(destinationConnection, finalDT);
 
             //Verify Password column with PassHash column
-            VerifyPassword();
+            //VerifyPassword();
             
             Console.ReadLine();
         }
@@ -78,19 +78,10 @@ namespace Passhash
         //Get Rows and Hash Datatable > estimated 4 hrs
         public static DataTable GetHashedDataTable(string connectionString, string sourceTableName)
         {
-            var datatable = new DataTable();
             int count = 0;
 
             // Load Datatable with all the rows from tblUsers
-            using (SqlConnection connSelect = new SqlConnection(connectionString))
-            {
-                connSelect.Open();
-                var selectCommand = string.Format("SELECT * FROM {0}", sourceTableName);
-                SqlCommand cmd = new SqlCommand(selectCommand, connSelect);
-
-                datatable.Load(cmd.ExecuteReader());
-                connSelect.Close();
-            }
+            DataTable datatable = GetTableAsDatatable(sourceTableName);
 
             //Hash all the passwords in datatable
             Console.WriteLine(">>>>Started Password Hashing");
@@ -159,57 +150,42 @@ namespace Passhash
 
         public static void CloneTable(string sourceTable, string destinationTable)
         {
-            var datatable = new DataTable();
-
-            //Load Datatable
-            Console.WriteLine(">>>> Cloning table");
-            using (SqlConnection connSelect = new SqlConnection(destinationConnection))
-            {
-                connSelect.Open();
-                var selectCommand = string.Format("SELECT * FROM {0}", sourceTable);
-                SqlCommand cmd = new SqlCommand(selectCommand, connSelect);
-
-                // Load Datatable with all the rows from tblUsers
-                datatable.Load(cmd.ExecuteReader());
-                connSelect.Close();
-            }
+            DataTable datatable = GetTableAsDatatable(sourceTable);
             
-            Console.WriteLine(">>>> Starting Bulk Copy");
             using (SqlBulkCopy bulk = new SqlBulkCopy(destinationConnection))
             {
                 bulk.DestinationTableName = destinationTable;
                 bulk.WriteToServer(datatable);
             }
+
             Console.WriteLine(">>>> Bulk copy from [" + sourceTable + "] To [" + destinationTable + "] Completed Successfully");
+        }
+
+        public static DataTable GetTableAsDatatable(string tableName) {
+            DataTable datatable = new DataTable();
+
+            using (SqlConnection connSelect = new SqlConnection(destinationConnection))
+            {
+                connSelect.Open();
+                var selectCommand = string.Format("SELECT * FROM {0}", tableName);
+                SqlCommand cmd = new SqlCommand(selectCommand, connSelect);
+                datatable.Load(cmd.ExecuteReader());
+                connSelect.Close();
+            }
+
+            return datatable;
         }
 
         public static DataTable ReverifyPassword(string sourceTableName, string destinationTableName)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            var sourceDatatable = new DataTable();
-            var destinationDatatable = new DataTable();
+            var sourceDatatable = GetTableAsDatatable(sourceTableName);
+            var destinationDatatable = GetTableAsDatatable(destinationTableName);
             int count = 0;
 
             stopwatch.Start();
-            using (SqlConnection connSelect = new SqlConnection(destinationConnection))
-            {
-                connSelect.Open();
-
-                //populate first datatable
-                var selectCommand_1 = string.Format("SELECT * FROM {0}", sourceTableName);
-                SqlCommand cmd_1 = new SqlCommand(selectCommand_1, connSelect);
-                sourceDatatable.Load(cmd_1.ExecuteReader());
-
-                //populate second datatable
-                var selectCommand_2 = string.Format("SELECT * FROM {0}", destinationTableName);
-                SqlCommand cmd_2 = new SqlCommand(selectCommand_2, connSelect);
-                destinationDatatable.Load(cmd_2.ExecuteReader());
-
-                connSelect.Close();
-            }
-
-            Console.WriteLine(">>>> Rehashing the updated passwords");
             //rehash updated password
+            Console.WriteLine(">>>> Rehashing the updated passwords");
             foreach (DataRow item in sourceDatatable.Rows)
             {
                 if (!item.IsNull("Password") && !item.IsNull("UserID")) {
@@ -229,15 +205,15 @@ namespace Passhash
                 }
             }
             Console.WriteLine(">>>> Completed Rehashing [" + count + "] updated passwords");
+
+            //hash passwords for new users
             count = 0;
             Console.WriteLine(">>>> Rehashing passwords for new users");
-            //hash passwords for new users
             if (destinationDatatable.Rows.Count > sourceDatatable.Rows.Count)
             {
                 foreach (DataRow drDest in destinationDatatable.Rows)
                 {
                     DataRow[] foundUsers = sourceDatatable.Select("UserID = '" + drDest["UserID"] + "'");
-                    //bool result = sourceDatatable.AsEnumerable().Any(r => drDest["UserID"].ToString() == r.Field<int>("UserID").ToString());
                     if (foundUsers.Length == 0)
                     {
                         drDest["PassHash"] = PasswordHashing.HashPassword(drDest["Password"].ToString());
