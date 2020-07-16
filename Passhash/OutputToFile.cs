@@ -9,19 +9,19 @@ namespace Passhash
 {
     public class OutputToFile
     {
-        public static void ToText(string output)
+        public static void ToText(string output, string filename)
         {
             FileStream ostrm;
             StreamWriter writer;
             TextWriter oldOut = Console.Out;
             try
             {
-                ostrm = new FileStream("./passwordVerification_3.txt", FileMode.OpenOrCreate, FileAccess.Write);
+                ostrm = new FileStream("./" + filename + ".txt", FileMode.OpenOrCreate, FileAccess.Write);
                 writer = new StreamWriter(ostrm);
             }
             catch (Exception e)
             {
-                Console.WriteLine("Cannot open passwordVerification_3.txt for writing");
+                Console.WriteLine("Cannot open " + filename + ".txt for writing");
                 Console.WriteLine(e.Message);
                 return;
             }
@@ -30,7 +30,6 @@ namespace Passhash
             Console.SetOut(oldOut);
             writer.Close();
             ostrm.Close();
-            Console.WriteLine("Done writing to file");
         }
     }
 }
