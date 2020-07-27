@@ -15,69 +15,133 @@ namespace Passhash
 {
     class Program
     {
-        /*
-            - 1) Clone table tblUsers into temp datatable and hash all the passwords (Time taken > 3hrs)
-            - 2) Once done, clone tblUsers (the second pass, now several hours later) into new Datatable
-            - 3) Compare hashed datatable(step 1) and cloned datatable(step 2) for
-                    a) new users (UserIDs in clonedDatatable not in hashedDatable) 
-                    b) records where the plain text password in cloned datatable is different than in hashed datatable (so the user changed their password).  
-            - 4) bulk update tblUsers with the reverified/hased datatable
-        */
-
         //private static string sourceConnection = ConfigurationManager.ConnectionStrings["internetUsersContext"].ConnectionString;
         private static string destinationConnection = ConfigurationManager.ConnectionStrings["internetUsersLocal"].ConnectionString;
 
         static void Main(string[] args)
         {
-            Stopwatch sw = Stopwatch.StartNew();
-            sw.Start();
+            //hash passwords 
+            FirstPass();
 
-            string tblUsers = "dbo.tblUsers";
+            //verify and hash new/updated passwords
+            SecondPass();
 
-            //clone tblUsers to datatable and hash passowords
-            DataTable hashedDatatable = HashPasswords(tblUsers);
+            //update tblUsers 
+            FinalPass();
 
-            //clone tblUsers to datatable with 3 columns
-            string columns = "[UserID], [Password], [PassHash]";
-            DataTable clonedDatatable = GetTableAsDatatable(tblUsers, columns);
-
-            //compare tables for new or updated users/passwords
-            DataTable finalDatatable = ReverifyPassword(hashedDatatable, clonedDatatable);
-
-            //Update tblUsers using Datatable
-            UpdateTable(finalDatatable);
-            
-            sw.Stop();
-            Console.WriteLine("Total Time Taken: " + sw.Elapsed);
-            //Verify Password column with PassHash column
+            //verify plain text and hashed passwords
             VerifyPassword();
 
             Console.ReadLine();
         }
-
-        public static DataTable HashPasswords(string sourceTable)
+        public static void FirstPass()
         {
-            int count = 0;
+            Console.WriteLine("## Starting First Pass ##");
+            int BatchSize = 100;
+            int rowCount = 0;
+            DataTable datatable = new DataTable();
 
-            //Pulling data and hashing passwords in datatable
-            string columns = "[UserID], [Password], [PassHash]";
-            DataTable datatable = GetTableAsDatatable(sourceTable, columns);
-
-            //Hash all the passwords in datatable
-            Console.WriteLine(">>>> Started Password Hashing");
-            foreach (DataRow dr in datatable.Rows)
+            using (SqlConnection conn = new SqlConnection(destinationConnection))
             {
-                dr["PassHash"] = PasswordHashing.HashPassword(dr["Password"].ToString());
-                Console.Write("\rHashed {0} rows   ", ++count);
-            }
-            Console.WriteLine();
+                conn.Open();
 
-            return datatable;
+                //create table tblUserTemp if it doesn't exists
+                string queryExist = @"IF NOT EXISTS(SELECT * FROM internetusers.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'tblUsersTemp')" +
+                                        "CREATE TABLE [dbo].[tblUsersTemp] (UserID int NOT NULL, Password varchar(50) NULL, PassHash varchar(120) NULL);";
+                using (SqlCommand command = new SqlCommand(queryExist, conn))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                //select all the records from tblUsers which are not hashed or with invalid passwords in tblUsersTemp
+                string querySelect = @"SELECT U.[UserID], U.[Password], U.[PassHash] 
+                                        FROM [internetusers].[dbo].[tblUsers] U 
+                                        LEFT JOIN [internetusers].[dbo].[tblUsersTemp] UT 
+                                        ON U.UserID = UT.UserID 
+                                        WHERE U.Password <> UT.Password OR UT.PassHash IS NULL";
+                SqlCommand cmd = new SqlCommand(querySelect, conn);
+                datatable.Load(cmd.ExecuteReader());
+                rowCount = HashAndUpsertTable(datatable, BatchSize);
+            }
+            Console.WriteLine(">>>> Total Rows Updated: " + rowCount);
+            Console.WriteLine("## First Pass Completed ##");
+        }
+
+        //reverify and hash the updated/new passwords
+        public static void SecondPass()
+        {
+            Console.WriteLine("\n## Starting Second Pass ##");
+            int BatchSize = 100;
+            int rowCount = 0;
+            using (SqlConnection conn = new SqlConnection(destinationConnection))
+            {
+                conn.Open();
+                DataTable datatable = new DataTable();
+                //Clone and copy rows from tblUsers into tblUsersTemp2
+                var selectIntoCommand = @"IF EXISTS(SELECT * FROM internetusers.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'tblUsersTemp2')" +
+	                                        "BEGIN " +
+	                                            "DROP TABLE [internetusers].[dbo].[tblUsersTemp2]; " +
+	                                            "SELECT UserID, Password, PassHash INTO [internetusers].[dbo].[tblUsersTemp2] FROM [internetusers].[dbo].[tblUsers]; " +
+	                                        "END " +
+                                          "ELSE " +
+	                                        "BEGIN " +
+	                                            "(SELECT UserID, Password, PassHash INTO [internetusers].[dbo].[tblUsersTemp2] FROM [internetusers].[dbo].[tblUsers]); " +
+	                                        "END";
+                SqlCommand selectCommand = new SqlCommand(selectIntoCommand, conn);
+                selectCommand.ExecuteNonQuery();
+
+                //Compare table tblUsersTemp and tblUsersTemp2 for diffrent Password
+                string compareQuery = @"SELECT UT2.UserID, UT2.Password, UT2.PassHash from tblUsersTemp2 UT2 " +
+                                        "LEFT JOIN tblUsersTemp UT ON (UT2.UserID = UT.UserID) " +
+                                        "WHERE UT2.Password <> UT.Password OR UT.PassHash IS NULL";
+                
+                SqlCommand command = new SqlCommand(compareQuery, conn);
+                datatable.Load(command.ExecuteReader());
+                rowCount = HashAndUpsertTable(datatable, BatchSize);
+                Console.WriteLine(">>>> Total New or Updated Rows : " + rowCount);
+            }
+            Console.WriteLine("## Second Pass Completed ##");
+        }
+
+        //Update Table tblUsers after passwords are hashed in tblUsersTemp
+        public static void FinalPass()
+        {
+            Console.WriteLine("\n## Starting Final Pass ##");
+            using (SqlConnection conn = new SqlConnection(destinationConnection))
+            {
+                using (SqlCommand cmd = new SqlCommand("", conn))
+                {
+                    try
+                    {
+                        conn.Open();
+                        // Updating tblUsers, and dropping temp table
+                        cmd.CommandText = "UPDATE Users SET Users.Password = Temp.Password, Users.PassHash = Temp.PassHash " +
+                                            "FROM [internetusers].[dbo].[tblUsers] Users " +
+                                            "INNER JOIN [internetusers].[dbo].[tblUsersTemp] Temp ON (Temp.UserID = Users.UserID)";
+                        cmd.ExecuteNonQuery();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Error : " + ex.Message);
+                        string error = "\nMessage: " + ex.Message + "\n";
+                        error += "Inner Exception: " + ex.InnerException + "\n";
+                        error += "StackTrace: " + ex.StackTrace;
+                        OutputToFile.ToText(error, "ExceptionLog");
+                    }
+                    finally
+                    {
+                        conn.Close();
+                    }
+                }
+            }
+            Console.WriteLine(">>>> Updated tblUsers with Hashed Passwords <<<<");
+            Console.WriteLine("## Final Pass Completed ##");
         }
 
         //Compares Plain text and Hashed Password
         public static bool VerifyPassword()
         {
+            Console.WriteLine("\n## Started Verification Process ##");
             var isValid = false;
             string connectionString = destinationConnection;
             SqlConnection connSelect = new SqlConnection(connectionString);
@@ -98,121 +162,60 @@ namespace Passhash
                     }
                 }
                 OutputToFile.ToText(output, "passwordVerification");
+                System.Diagnostics.Process.Start(Path.Combine(Directory.GetCurrentDirectory(), @"passwordVerification.txt"));
+   
                 connSelect.Close();
             }
+            Console.WriteLine("\n## Verification Process Logged into passwordVerification.txt ##");
             return isValid;
         }
 
-        public static DataTable GetTableAsDatatable(string tableName, string columns = "*")
+        public static int HashAndUpsertTable(DataTable datatable, int BatchSize)
         {
-            DataTable datatable = new DataTable();
+            int rowCount = 0;
+            //clones the current datatable's schema and constraints into new datatable.
+            DataTable copyDatatable = datatable.Clone();
 
-            using (SqlConnection connSelect = new SqlConnection(destinationConnection))
+            foreach (DataRow dr in datatable.Rows)
             {
-                connSelect.Open();
-                var selectCommand = string.Format("SELECT {1} FROM {0}", tableName, columns);
-                SqlCommand cmd = new SqlCommand(selectCommand, connSelect);
-                datatable.Load(cmd.ExecuteReader());
-                connSelect.Close();
+                //Hash Passwords
+                dr["PassHash"] = PasswordHashing.HashPassword(dr["Password"].ToString());
+
+                copyDatatable.ImportRow(dr); // Import current row to cloned datatable
+
+                //Upsert the datatable when the cloned datatable size is equal to batchsize
+                if (copyDatatable.Rows.Count == BatchSize)
+                {
+                    rowCount += UpsertDatatable(copyDatatable);
+                    Console.WriteLine(">>>> Updated: " + rowCount + " Rows");
+                    copyDatatable = datatable.Clone(); //clears and clone the datatable
+                }
             }
-            //update few passwords on cloned dt for testing
-            //if (columns.Contains("101"))
-            //{
-            //    datatable.Rows[1][1] = "NewPasswd";
-            //    datatable.Rows[5][1] = "NewP@ssW''or";
-            //}
-            return datatable;
+            //Upsert rest of the hashed datarows
+            if (copyDatatable.Rows.Count > 0)
+            {
+                rowCount += UpsertDatatable(copyDatatable);
+                Console.WriteLine(">>>> Updated: " + rowCount + " Rows");
+            }
+            return rowCount;
         }
 
-        //reverify and hash the updated/new passwords
-        public static DataTable ReverifyPassword(DataTable sourceDatatable, DataTable destinationDatatable)
+        //using stored procedure to update or insert into table; returns number of rows upserted.
+        public static int UpsertDatatable(DataTable datatable)
         {
-            int count = 0;
-
-            //rehash updated password
-            foreach (DataRow item in sourceDatatable.Rows)
+            int rowsUpserted = 0;
+            using (SqlConnection con = new SqlConnection(destinationConnection))
             {
-                if (!item.IsNull("Password") && !item.IsNull("UserID"))
+                using (SqlCommand updatecmd = new SqlCommand("updateUsers", con))
                 {
-                    string userID = item["UserID"].ToString();
-                    string password = item["Password"].ToString();
-                    password = password.Replace("'", "''");
-
-                    string selectQ = String.Format("UserID = '{0}' AND Password <> '{1}'", userID, password);
-                    DataRow pwdRow = destinationDatatable.Select(selectQ).FirstOrDefault();
-
-                    if (pwdRow != null)
-                    {
-                        item["Password"] = pwdRow["Password"];
-                        item["PassHash"] = PasswordHashing.HashPassword(pwdRow["Password"].ToString());
-                        ++count;
-                    }
+                    updatecmd.CommandType = CommandType.StoredProcedure;
+                    updatecmd.Parameters.AddWithValue("@tblUser", datatable);
+                    con.Open();
+                    rowsUpserted = updatecmd.ExecuteNonQuery();
+                    con.Close();
                 }
             }
-            Console.WriteLine(">>>> Completed Rehashing [" + count + "] updated passwords");
-
-            //hash passwords for new users
-            count = 0;
-            if (destinationDatatable.Rows.Count > sourceDatatable.Rows.Count)
-            {
-                foreach (DataRow drDest in destinationDatatable.Rows)
-                {
-                    DataRow[] foundUsers = sourceDatatable.Select("UserID = '" + drDest["UserID"] + "'");
-                    if (foundUsers.Length == 0)
-                    {
-                        drDest["PassHash"] = PasswordHashing.HashPassword(drDest["Password"].ToString());
-                        sourceDatatable.ImportRow(drDest);
-                        ++count;
-                    }
-                }
-                Console.WriteLine(">>>> Completed Rehashing [" + count + "] new user's passwords");
-            }
-            return sourceDatatable;
-        }
-
-        //Update Table tblUsers
-        public static void UpdateTable(DataTable datatable)
-        {
-            using (SqlConnection conn = new SqlConnection(destinationConnection))
-            {
-                using (SqlCommand cmd = new SqlCommand("", conn))
-                {
-                    try
-                    {
-                        conn.Open();
-                        // Creating temp table with same defination as tblUsers with 3 columns only
-                        cmd.CommandText = "SELECT TOP 0 [UserID], [Password], [PassHash] into #TmpTable from [dbo].[tblUsers]";
-                        cmd.ExecuteNonQuery();
-                        // Bulk insert into temp table
-                        using (var bulkcopy = new SqlBulkCopy(conn))
-                        {
-                            bulkcopy.DestinationTableName = "#TmpTable";
-                            bulkcopy.WriteToServer(datatable);
-                            bulkcopy.Close();
-                        }
-
-                        // Updating tblUsers, and dropping temp table
-                        cmd.CommandText = "UPDATE Users SET Users.Password = Temp.Password, Users.PassHash = Temp.PassHash " +
-                                            "FROM tblUsers Users " +
-                                            "INNER JOIN #TmpTable Temp ON (Temp.UserID = Users.UserID) " +
-                                            "DROP TABLE #TmpTable";
-                        cmd.ExecuteNonQuery();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine("Error : " + ex.Message);
-                        string error = "\nMessage: " + ex.Message + "\n";
-                        error += "Inner Exception: " + ex.InnerException + "\n";
-                        error += "StackTrace: " + ex.StackTrace;
-                        OutputToFile.ToText(error, "ExceptionLog");
-                    }
-                    finally
-                    {
-                        conn.Close();
-                    }
-                }
-            }
-            Console.WriteLine(">>>> Updated tblUsers with Hashed Passwords <<<<");
+            return rowsUpserted;
         }
     }
 }
